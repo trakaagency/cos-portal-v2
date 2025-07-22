@@ -44,6 +44,8 @@ export default async function handler(req, res) {
     }
 
     console.log('User authenticated, fetching emails...')
+    console.log('Access token exists:', !!session.accessToken)
+    console.log('Refresh token exists:', !!session.refreshToken)
 
     // Set up Gmail API with automatic token refresh
     const oauth2Client = new google.auth.OAuth2(
@@ -56,6 +58,18 @@ export default async function handler(req, res) {
       access_token: session.accessToken,
       refresh_token: session.refreshToken,
     })
+
+    // Test the token before making Gmail API calls
+    try {
+      await oauth2Client.getAccessToken()
+      console.log('✅ Token validation successful')
+    } catch (tokenError) {
+      console.error('❌ Token validation failed:', tokenError.message)
+      return res.status(401).json({ 
+        error: 'Invalid or expired token. Please sign in again.',
+        code: 'TOKEN_VALIDATION_ERROR'
+      })
+    }
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
 
