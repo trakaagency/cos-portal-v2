@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String?
+  image           String?
+  gmailToken      String?
+  gmailRefreshToken String?
+  settings        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  emails          Email[]
+  applications    Application[]
+  
+  @@map("users")
+}
+
+model Email {
+  id            String   @id @default(cuid())
+  gmailId       String   @unique
+  threadId      String?
+  subject       String
+  sender        String
+  senderEmail   String
+  snippet       String?
+  body          String?
+  receivedAt    DateTime
+  hasAttachment Boolean  @default(false)
+  processed     Boolean  @default(false)
+  cosRelevant   Boolean  @default(false)
+  priority      Priority @default(NORMAL)
+  
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  pdfs          PDF[]
+  applications  Application[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@map("emails")
+}
+
+model PDF {
+  id            String      @id @default(cuid())
+  filename      String
+  mimeType      String
+  size          Int
+  attachmentId  String
+  downloadUrl   String?
+  localPath     String?
+  extractedText String?
+  processedAt   DateTime?
+  status        ProcessingStatus @default(PENDING)
+  errorMessage  String?
+  
+  emailId       String?
+  email         Email?      @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  
+  applications  Application[]
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  @@map("pdfs")
+}
+
+model Application {
+  id            String      @id @default(cuid())
+  
+  // Extracted data fields
+  artistNames   String[]
+  eventTitle    String?
+  eventDate     DateTime?
+  eventEndDate  DateTime?
+  venue         String?
+  venueAddress  String?
+  passportNumber String?
+  nationality   String?
+  dateOfBirth   DateTime?
+  
+  // Application tracking
+  status        ApplicationStatus @default(PENDING)
+  priority      Priority    @default(NORMAL)
+  notes         String?
+  
+  // JSON outputs
+  extractedData Json?
+  validatedData Json?
+  
+  // References
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  emailId       String
+  email         Email       @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  
+  pdfId         String?
+  pdf           PDF?        @relation(fields: [pdfId], references: [id])
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  processedAt   DateTime?
+  
+  @@map("applications")
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  RETRYING
+}
+
+model VisaImage {
+  id            String   @id @default(cuid())
+  artistId      String
+  passportNumber String?
+  artistName    String
+  filePath      String
+  fileUrl       String
+  uploadedAt    DateTime @default(now())
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@map("visa_images")
+}
+
+model HiddenEmail {
+  id        String   @id @default(cuid())
+  emailId   String   @unique
+  userId    String
+  hiddenAt  DateTime @default(now())
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("hidden_emails")
+}
+
+enum ApplicationStatus {
+  PENDING
+  PROCESSING
+  EXTRACTED
+  VALIDATED
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ERROR
+} 
