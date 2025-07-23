@@ -341,6 +341,7 @@ export default function PDFSection({ selectedEmails, onExtractComplete }: PDFSec
             console.log('🔍 Adding to completedPDFs array:', mergeItem)
             completedPDFs.push(mergeItem)
             console.log('🔍 completedPDFs length after adding:', completedPDFs.length)
+            retryCount = maxRetries + 1;
             break // Success, move to next PDF
           } else {
             throw new Error('Extraction returned no data')
