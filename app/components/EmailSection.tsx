@@ -48,7 +48,7 @@ interface EmailSectionProps {
   emails: Email[];
   selectedEmails: string[];
   onEmailToggle: (emailId: string) => void;
-  onRefresh: () => void;
+  onRefresh: (isRefresh?: boolean) => void;
   loading: boolean;
   onExtractPDFs: () => void;
   isExpanded?: boolean;
@@ -60,6 +60,7 @@ interface EmailSectionProps {
   filterLoading?: boolean;
   filterAttachments?: boolean;
   onAttachmentsFilterToggle?: () => void;
+  refreshLoading: boolean;
 }
 
 export default function EmailSection({
@@ -77,7 +78,8 @@ export default function EmailSection({
   onVisaFilterToggle,
   filterLoading = false,
   filterAttachments = false,
-  onAttachmentsFilterToggle
+  onAttachmentsFilterToggle,
+  refreshLoading = false,
 }: EmailSectionProps) {
   const { data: session } = useSession();
   const [searchTerm, setSearchTerm] = useState('');
@@ -293,12 +295,12 @@ export default function EmailSection({
 
           {/* Refresh Button */}
           <button
-            onClick={onRefresh}
-            disabled={loading}
+            onClick={() => onRefresh(true)}
+            disabled={loading || refreshLoading}
             className="btn-gradient btn-small disabled:opacity-50"
           >
             <span>
-              <RefreshCw className={`w-4 h-4 inline mr-1 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 inline mr-1 ${refreshLoading ? 'animate-spin' : ''}`} />
               Refresh
             </span>
           </button>
@@ -319,7 +321,32 @@ export default function EmailSection({
         </div>
       </div>
       <div className={`space-y-2 overflow-y-auto ${isExpanded ? 'max-h-[calc(100vh-120px)]' : 'max-h-[calc(100vh-300px)]'}`}>
-        {sortedEmails.length === 0 ? (
+        {loading || refreshLoading || filterLoading ? (
+          <div className="flex items-center justify-center py-4">
+            <div className="loader">
+              <div className="circle">
+                <div className="dot"></div>
+                <div className="outline"></div>
+              </div>
+              <div className="circle">
+                <div className="dot"></div>
+                <div className="outline"></div>
+              </div>
+              <div className="circle">
+                <div className="dot"></div>
+                <div className="outline"></div>
+              </div>
+              <div className="circle">
+                <div className="dot"></div>
+                <div className="outline"></div>
+              </div>
+              <div className="circle">
+                <div className="dot"></div>
+                <div className="outline"></div>
+              </div>
+            </div>
+          </div>
+        ) : sortedEmails.length === 0 ? (
           <div className="text-center py-4 text-gray-400">
             <Mail className="h-12 w-12 mx-auto mb-3 opacity-50" />
             <p>No emails found matching your criteria</p>
