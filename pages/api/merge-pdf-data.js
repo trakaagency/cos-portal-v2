@@ -287,7 +287,7 @@ REMEMBER: Create only ONE merged JSON output. Report only missing critical field
           item.venueAddress = itineraryData.venueAddress;
           
           // Apply salary if available
-          if (itineraryData.grossSalary && itineraryData.grossSalary.trim() !== "") {
+          if (itineraryData.grossSalary && String(itineraryData?.grossSalary).trim() !== "") {
             item.grossSalary = itineraryData.grossSalary;
           }
         });
