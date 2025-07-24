@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import pdf from 'pdf-parse'
 import mammoth from 'mammoth'
 import OpenAI from 'openai'
+import FormData from 'form-data'
+import axios from 'axios'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -12,6 +14,8 @@ const supabase = createClient(
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
+
+const pdfrestApiKey = process.env.NEXT_PUBLIC_PDFREST_API_KEY
 
 export default async function handler(req, res) {
   console.log('🤖 Extract PDF API called with method:', req.method)
@@ -32,20 +36,21 @@ export default async function handler(req, res) {
     console.log('🔄 Processing PDF:', { fileId, filename, hasBase64Data: !!base64Data })
 
     let extractedText = ''
+    let pdfBuffer
 
     // Handle base64 data directly (new approach)
     if (base64Data) {
       console.log('📄 Processing base64 PDF data directly')
       try {
-        const pdfBuffer = Buffer.from(base64Data, 'base64')
+        pdfBuffer = Buffer.from(base64Data, 'base64')
         const pdfData = await pdf(pdfBuffer)
         extractedText = pdfData.text
         console.log('✅ Text extraction successful from base64. Length:', extractedText.length)
       } catch (pdfError) {
         console.error('❌ PDF extraction error from base64:', pdfError)
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Failed to extract text from PDF',
-          details: pdfError.message 
+          details: pdfError.message
         })
       }
     } else if (fileId) {
@@ -76,14 +81,14 @@ export default async function handler(req, res) {
         if (pdfRecord.file_data) {
           console.log('📄 Extracting text from file_data (base64)')
           console.log('📄 Base64 data length:', pdfRecord.file_data.length)
-          
-          const pdfBuffer = Buffer.from(pdfRecord.file_data, 'base64')
+
+          pdfBuffer = Buffer.from(pdfRecord.file_data, 'base64')
           console.log('📄 Buffer size:', pdfBuffer.length, 'bytes')
-          
+
           // Check if it's actually a PDF or Word document
           const header = pdfBuffer.toString('ascii', 0, 10)
           console.log('📄 File header:', header)
-          
+
           if (header.includes('%PDF')) {
             // It's a PDF
             console.log('🔄 Attempting PDF parsing...')
@@ -99,7 +104,7 @@ export default async function handler(req, res) {
               extractedText = result.value
               console.log('✅ Word document text extraction successful. Length:', extractedText.length)
               console.log('📝 First 300 characters:', extractedText.substring(0, 300))
-              
+
               if (result.messages.length > 0) {
                 console.log('⚠️ Word document processing warnings:', result.messages)
               }
@@ -119,10 +124,10 @@ export default async function handler(req, res) {
           stack: pdfError.stack,
           name: pdfError.name
         })
-        
-        return res.status(500).json({ 
+
+        return res.status(500).json({
           error: 'Failed to extract text from PDF',
-          details: pdfError.message 
+          details: pdfError.message
         })
       }
     } else {
@@ -131,6 +136,54 @@ export default async function handler(req, res) {
 
     if (!extractedText || extractedText.trim().length === 0) {
       console.error('❌ No text extracted from PDF')
+
+      const newForm = new FormData()
+      newForm.append('file', pdfBuffer, {
+        filename: 'document.pdf',
+        contentType: 'application/pdf'
+      })
+      newForm.append("output", "example_pdf-with-ocr-text_out")
+
+      const OCRConfig = {
+        method: "post",
+        maxBodyLength: Infinity,
+        url: "https://api.pdfrest.com/pdf-with-ocr-text",
+        headers: {
+          "Api-Key": pdfrestApiKey,
+          ...newForm.getHeaders(),
+        },
+        data: newForm,
+      }
+
+      console.log("Sending POST request to OCR endpoint...")
+      const ocrResponse = await axios(OCRConfig)
+      if (ocrResponse.status === 200) {
+        const ocrPDFID = ocrResponse.data.outputId
+        console.log("Got the output ID: " + ocrPDFID);
+
+        const extractData = new FormData()
+        extractData.append("id", ocrPDFID)
+
+        const extractConfig = {
+          method: "post",
+          maxBodyLength: Infinity,
+          url: "https://api.pdfrest.com/extracted-text",
+          headers: {
+            "Api-Key": pdfrestApiKey,
+            ...extractData.getHeaders(),
+          },
+          data: extractData,
+        };
+
+        console.log("Sending POST request to extract text endpoint...")
+        const extractResponse = await axios(extractConfig)
+        if (extractResponse.status === 200) {
+          extractedText = extractResponse.data.fullText
+        }
+      }
+    }
+
+    if (!extractedText || extractedText.trim().length === 0) {
       return res.status(400).json({ error: 'No text could be extracted from the PDF' })
     }
 
@@ -144,31 +197,32 @@ export default async function handler(req, res) {
     // Step 3: Determine PDF type and create appropriate prompt
     const filenameLower = filename.toLowerCase()
     const extractedTextLower = extractedText.toLowerCase()
-    
-    // Enhanced document type detection
-    const isItinerary = filenameLower.includes('itinerary') || 
-                        filenameLower.includes('schedule') || 
-                        filenameLower.includes('event') ||
-                        filenameLower.includes('tour') ||
-                        filenameLower.includes('gig') ||
-                        filenameLower.includes('performance') ||
-                        extractedTextLower.includes('venue') ||
-                        extractedTextLower.includes('performance') ||
-                        extractedTextLower.includes('show date') ||
-                        extractedTextLower.includes('event date')
+    console.log("extracted text lower case ==================>>>>>>>", extractedTextLower)
 
-    const isArtistDetails = filenameLower.includes('artist') || 
-                           filenameLower.includes('details') || 
-                           filenameLower.includes('cos') ||
-                           filenameLower.includes('sponsorship') ||
-                           filenameLower.includes('passport') ||
-                           filenameLower.includes('personal') ||
-                           extractedTextLower.includes('passport number') ||
-                           extractedTextLower.includes('date of birth') ||
-                           extractedTextLower.includes('place of birth')
+    // Enhanced document type detection
+    const isItinerary = filenameLower.includes('itinerary') ||
+      filenameLower.includes('schedule') ||
+      filenameLower.includes('event') ||
+      filenameLower.includes('tour') ||
+      filenameLower.includes('gig') ||
+      filenameLower.includes('performance') ||
+      extractedTextLower.includes('venue') ||
+      extractedTextLower.includes('performance') ||
+      extractedTextLower.includes('show date') ||
+      extractedTextLower.includes('event date')
+
+    const isArtistDetails = filenameLower.includes('artist') ||
+      filenameLower.includes('details') ||
+      filenameLower.includes('cos') ||
+      filenameLower.includes('sponsorship') ||
+      filenameLower.includes('passport') ||
+      filenameLower.includes('personal') ||
+      extractedTextLower.includes('passport number') ||
+      extractedTextLower.includes('date of birth') ||
+      extractedTextLower.includes('place of birth')
 
     let prompt = ''
-    
+
     if (isItinerary) {
       prompt = `Extract key information from this artist itinerary document. Return ONLY a JSON array with this structure:
 
@@ -317,7 +371,7 @@ Return ONLY the JSON array, no other text.`
       } catch (parseError) {
         console.error('❌ Error parsing AI response:', parseError)
         console.error('🤖 AI Response:', aiResponse)
-        
+
         // Fallback: Create mock data if OpenAI fails
         console.log('🔄 Creating fallback mock data...')
         extractedData = [{
@@ -348,25 +402,25 @@ Return ONLY the JSON array, no other text.`
       }
     } catch (openaiError) {
       console.error('❌ OpenAI API error:', openaiError)
-      
+
       // Check if it's a timeout error
       if (openaiError.code === 'ECONNABORTED' || openaiError.message.includes('timeout')) {
         console.error('❌ OpenAI request timed out')
-        return res.status(408).json({ 
+        return res.status(408).json({
           error: 'OpenAI request timed out. Please try again.',
           details: 'The PDF was too large or complex to process within the time limit.'
         })
       }
-      
+
       // Check if it's a rate limit error
       if (openaiError.status === 429) {
         console.error('❌ OpenAI rate limit exceeded')
-        return res.status(429).json({ 
+        return res.status(429).json({
           error: 'OpenAI rate limit exceeded. Please wait a moment and try again.',
           details: 'Too many requests to OpenAI API.'
         })
       }
-      
+
       // Fallback: Create mock data if OpenAI fails
       console.log('🔄 Creating fallback mock data due to OpenAI error...')
       extractedData = [{
@@ -399,7 +453,7 @@ Return ONLY the JSON array, no other text.`
     // Step 6: Validate and process the extracted data
     if (!Array.isArray(extractedData)) {
       console.error('❌ AI response is not an array:', extractedData)
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Invalid AI response format',
         details: 'Expected array but got: ' + typeof extractedData
       })
@@ -455,9 +509,9 @@ Return ONLY the JSON array, no other text.`
 
   } catch (error) {
     console.error('❌ Extract PDF API error:', error)
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Failed to extract PDF',
-      details: error.message 
+      details: error.message
     })
   }
 }
