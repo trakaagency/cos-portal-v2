@@ -86,6 +86,7 @@ export default function Dashboard() {
   const [filterVisa, setFilterVisa] = useState(false);
   const [filterLoading, setFilterLoading] = useState(false);
   const [filterAttachments, setFilterAttachments] = useState(false);
+  const [refreshLoading, setRefreshLoading] = useState(false);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -114,8 +115,9 @@ export default function Dashboard() {
   }, [session, filterVisa, filterAttachments]);
 
   // Fetch emails from Gmail API
-  const fetchEmails = async () => {
+  const fetchEmails = async (isRefresh?: boolean) => {
     setLoading(true);
+    if (isRefresh) setRefreshLoading(true);
     setError(null);
     
     try {
@@ -127,6 +129,7 @@ export default function Dashboard() {
         if (response.status === 401 && errorData.code === 'REFRESH_TOKEN_ERROR') {
           setError('Authentication expired. Please sign out and sign in again.');
           setLoading(false);
+          if (isRefresh) setRefreshLoading(false);
           return;
         }
         
@@ -161,6 +164,8 @@ export default function Dashboard() {
       setError('Failed to load emails. Please try again.');
     } finally {
       setLoading(false);
+      if (isRefresh) setRefreshLoading(false);
+      if (filterLoading) setFilterLoading(false);
     }
   };
 
@@ -295,12 +300,6 @@ export default function Dashboard() {
     // Clear emails immediately to prevent glitchy display
     setEmails([]);
     setSelectedEmails([]);
-    
-    // Fetch emails with new filter immediately
-    console.log('Fetching emails with filterVisa:', newFilterState);
-    fetchEmails().finally(() => {
-      setFilterLoading(false);
-    });
   };
 
   const handleAttachmentsFilterToggle = () => {
@@ -319,12 +318,6 @@ export default function Dashboard() {
     // Clear emails immediately to prevent glitchy display
     setEmails([]);
     setSelectedEmails([]);
-    
-    // Fetch emails with new filter immediately
-    console.log('Fetching emails with filterAttachments:', newFilterState);
-    fetchEmails().finally(() => {
-      setFilterLoading(false);
-    });
   };
 
   // Loading state
@@ -381,7 +374,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <span>{error}</span>
               <button
-                onClick={fetchEmails}
+                onClick={() => fetchEmails()}
                 className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white text-sm"
               >
                 Retry
@@ -409,6 +402,7 @@ export default function Dashboard() {
             filterLoading={filterLoading}
             filterAttachments={filterAttachments}
             onAttachmentsFilterToggle={handleAttachmentsFilterToggle}
+            refreshLoading={refreshLoading}
           />
         ) : (
           /* Normal Dashboard Layout */
@@ -431,6 +425,7 @@ export default function Dashboard() {
                 filterLoading={filterLoading}
                 filterAttachments={filterAttachments}
                 onAttachmentsFilterToggle={handleAttachmentsFilterToggle}
+                refreshLoading={refreshLoading}
               />
             </div>
             
